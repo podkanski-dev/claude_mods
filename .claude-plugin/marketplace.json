@@ -1,5 +1,16 @@
 {
   "name": "claude-mods",
-  "owner": { "name": "Karol Podkanski" },
-  "plugins": [{ "name": "assumption-tracker", "source": "./assumption_tracker" }]
+  "owner": {
+    "name": "Karol Podkanski"
+  },
+  "plugins": [
+    {
+      "name": "assumption-tracker",
+      "source": "./assumption_tracker"
+    },
+    {
+      "name": "self-critique",
+      "source": "./self_critique"
+    }
+  ]
 }
