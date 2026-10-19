@@ -1,0 +1,5 @@
+{
+  "name": "claude-mods",
+  "owner": { "name": "Karol Podkanski" },
+  "plugins": [{ "name": "assumption-tracker", "source": "./assumption_tracker" }]
+}

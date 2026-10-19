@@ -1,0 +1,6 @@
+{
+  "name": "assumption-tracker",
+  "version": "0.1.0",
+  "description": "After each task, lists the assumptions Claude made; mark them Right or Wrong and Claude fixes only the wrong ones.",
+  "types": "./types/index.d.ts"
+}
