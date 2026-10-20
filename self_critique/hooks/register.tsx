@@ -35,7 +35,7 @@ async function critiqueNow($: EngineInterface) {
     reply = conversation
       ? await $.model.complete({
           model: choice,
-          system: `You review an AI coding assistant's work. You get the whole conversation; review only the assistant's most recent response (everything after the last [user] message), using the earlier conversation as context.\n${RUBRIC}`,
+          system: `You review an AI coding assistant's work. You get the whole conversation; review only the assistant's final text reply (the last [assistant] message), using the earlier conversation as context.\n${RUBRIC}`,
           prompt: `<conversation>\n${conversation}\n</conversation>`,
         })
       : ({ isAnswered: false, reason: 'no response to review yet' } as const)

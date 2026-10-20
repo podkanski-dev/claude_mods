@@ -16,7 +16,7 @@ test('parseCritique reads JSON wrapped in prose and rejects junk', () => {
   expect(parseCritique('{"verdict":"Weak","summary":"s","flaws":[{"issue":1}]}')?.flaws).toEqual([])
 })
 
-test('transcript keeps the whole conversation, tool results included', () => {
+test('transcript keeps the text messages and leaves out tool calls', () => {
   const text = transcript([
     { role: 'user', text: 'first ask', toolUses: [] },
     { role: 'assistant', text: 'first answer', toolUses: [] },
@@ -29,8 +29,11 @@ test('transcript keeps the whole conversation, tool results included', () => {
     { role: 'user', text: '', toolUses: [], toolResults: [] },
     { role: 'assistant', text: 'done', toolUses: [] },
   ])
-  for (const part of ['first ask', 'first answer', 'second ask', '[tool call: Read]', 'file body', 'done']) {
+  for (const part of ['first ask', 'first answer', 'second ask', 'reading', 'done']) {
     expect(text).toContain(part)
+  }
+  for (const part of ['Read', 'a.ts', 'file body']) {
+    expect(text).not.toContain(part)
   }
   expect(transcript([{ role: 'user', text: 'only a question', toolUses: [] }])).toBe(null)
 })

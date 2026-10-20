@@ -7,7 +7,7 @@ Reply with JSON only, no prose and no code fences:
 {"verdict":"Strong"|"Mixed"|"Weak","summary":"<1-2 sentences>","strengths":["..."],"flaws":[{"issue":"<what is wrong>","fix":"<concrete instruction that fixes it>"}]}
 At most 5 strengths and 5 flaws. An empty flaws list is fine when there are none.`
 
-export const FORK_PROMPT = `Step outside your role for this one message: as a strict reviewer, critique your own most recent response (everything you did and said since my last message). Do not fix anything now.
+export const FORK_PROMPT = `Step outside your role for this one message: as a strict reviewer, critique your own final text reply to my last message. Judge only what that reply says; ignore your tool calls and their results. Do not fix anything now.
 ${RUBRIC}`
 
 const VERDICTS = ['Strong', 'Mixed', 'Weak']
@@ -38,25 +38,15 @@ export function parseCritique(text: string): Critique | null {
 
 const MAX_CHARS = 500_000
 
-// The whole conversation as text, tool calls and their results included, for a model with no history.
+// The conversation's text messages for a model with no history; tool calls and their results are left out.
 // ponytail: past ~500k chars (~125k tokens) the oldest part is dropped to fit the reviewer's context.
 export function transcript(messages: readonly SessionMessage[]): string | null {
   const lastPrompt = messages.findLastIndex(m => m.role === 'user' && m.text !== '' && !m.toolResults?.length)
-  if (lastPrompt < 0 || !messages.slice(lastPrompt + 1).some(m => m.role === 'assistant')) return null
+  if (lastPrompt < 0 || !messages.slice(lastPrompt + 1).some(m => m.role === 'assistant' && m.text !== '')) return null
 
   const text = messages
-    .flatMap(m =>
-      m.role === 'user'
-        ? m.text
-          ? [`[user]\n${m.text}`]
-          : []
-        : [
-            `[assistant]\n${m.text}`,
-            ...m.toolUses.map(
-              t => `[tool call: ${t.tool}${t.isError ? ' (errored)' : ''}] ${JSON.stringify(t.input)}\n[result]\n${t.text ?? ''}`,
-            ),
-          ],
-    )
+    .filter(m => m.text !== '')
+    .map(m => `[${m.role}]\n${m.text}`)
     .join('\n\n')
 
   return text.length > MAX_CHARS ? `[earlier conversation cut]\n${text.slice(-MAX_CHARS)}` : text
