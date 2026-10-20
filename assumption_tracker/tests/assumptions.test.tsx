@@ -6,7 +6,12 @@ const PLUGIN = 'assumption-tracker'
 test('review assumptions and send a fix for the wrong ones', async ($, on) => {
   const clock = mock.clock(on)
   const sent: string[] = []
-  on('model.fork', () => ({ value: { isAnswered: true as const, text: '```json\n["Used SQLite", "Named the table users"]\n```', usage } }))
+  const replies = ['```json\n["Used SQLite", "Named the table users"]\n```', '["used  sqlite", "Kept the old API"]']
+  const prompts: string[] = []
+  on('model.fork', ($, e) => {
+    prompts.push(e.prompt)
+    return { value: { isAnswered: true as const, text: replies.shift() ?? '[]', usage } }
+  })
   on('prompt.submit', ($, e) => {
     sent.push(e.text)
     return { text: e.text }
@@ -40,4 +45,18 @@ test('review assumptions and send a fix for the wrong ones', async ($, on) => {
   expect(fix).toMatch(/WRONG[^]*Named the table users\n  My note: call it accounts/)
   expect(fix).toMatch(/RIGHT[^]*Used SQLite\n  My note: sqlite is fine/)
   expect(fix.indexOf('Used SQLite')).toBeGreaterThan(fix.indexOf('RIGHT'))
+
+  await $.turn.complete({ answer: 'Fixed.', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' })
+  await clock.settle()
+  expect(prompts[1]).toMatch(/Already recorded[^]*- Named the table users/)
+  await pane.redraw()
+  expect(await pane.find({ type: 'Text', text: /Kept the old API/ })).toBeDefined()
+  expect(await pane.findAll({ type: 'Text', text: /Used SQLite/i })).toHaveLength(1)
+  expect(await pane.find({ type: 'Text', text: /fix sent/ })).toBeDefined()
+
+  await pane.press({ key: 'wrong-t2-0' })
+  await pane.press({ key: 'done' })
+  expect(sent.length).toBe(2)
+  expect(sent[1]).toMatch(/WRONG[^]*Kept the old API/)
+  expect(sent[1]?.split('RIGHT')[0]).not.toMatch(/Named the table users/)
 })

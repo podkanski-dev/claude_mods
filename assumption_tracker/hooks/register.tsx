@@ -12,6 +12,8 @@ const EXTRACT = `Look back at the task you just finished. List the assumptions y
 Leave out anything I stated, anything I'd never notice in the outcome (internal names, file layout, refactors, routine implementation choices), and anything that was the only sensible option. Fewer is better: an empty list beats padding.
 Answer with a JSON array of short strings and nothing else. If there were none, answer [].`
 
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+
 export function parse(reply: string): string[] {
   const start = reply.indexOf('[')
   const end = reply.lastIndexOf(']')
@@ -26,11 +28,11 @@ export function parse(reply: string): string[] {
 
 export function fixPrompt(list: Assumption[]): string {
   const line = (a: Assumption) => `- ${a.text}${a.note ? `\n  My note: ${a.note}` : ''}`
-  const of = (v: Verdict) => list.filter(a => a.verdict === v).map(line).join('\n')
+  const of = (v: Verdict) => list.filter(a => a.verdict === v && !a.sent).map(line).join('\n')
   const right = of('right')
   const open = of(null)
   return [
-    'I reviewed the assumptions you made in the last task.',
+    'I reviewed the assumptions you made so far.',
     `These were WRONG. Fix only the parts of your work that rest on them:\n${of('wrong')}`,
     right && `These were RIGHT. Keep everything that rests on them exactly as it is:\n${right}`,
     open && `I did not review these; leave them as they are unless a fix above forces a change:\n${open}`,
@@ -42,9 +44,9 @@ export function fixPrompt(list: Assumption[]): string {
 async function finish($: EngineInterface) {
   const list = (await read($, items)).map(a => ({ ...a, note: drafts.get(a.id) ?? a.note }))
   drafts.clear()
-  const hasWrong = list.some(a => a.verdict === 'wrong')
-  if (hasWrong) await $.prompt.submit({ text: fixPrompt(list), asUser: true })
-  if (hasWrong || list.every(a => a.verdict !== null)) await update($, items, () => [])
+  if (!list.some(a => a.verdict === 'wrong' && !a.sent)) return
+  await $.prompt.submit({ text: fixPrompt(list), asUser: true })
+  await update($, items, all => all.map(a => (a.verdict === 'wrong' ? { ...a, sent: true } : a)))
 }
 
 function openPane($: EngineInterface) {
@@ -52,19 +54,21 @@ function openPane($: EngineInterface) {
 }
 
 export const register: Register = on => {
-  let latest = ''
-
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId !== undefined || e.reason !== 'answer') return result
 
-    const turnId = (latest = e.turnId)
     // ponytail: one forked request per finished turn (cached prefix); add a per-turn opt-out if cost bites
     $.clock.after(0, async () => {
-      const reply = await $.model.fork({ prompt: `Your final reply was:\n${e.answer}\n\n${EXTRACT}` })
-      if (!reply.isAnswered || turnId !== latest) return
-      const found = parse(reply.text).map((text, i) => ({ id: `${turnId}-${i}`, text, verdict: null, note: '' }))
-      await update($, items, () => found)
+      const known = (await read($, items)).map(a => `- ${a.text}`).join('\n')
+      const skip = known && `\n\nAlready recorded earlier this session; do not list these again, even reworded:\n${known}`
+      const reply = await $.model.fork({ prompt: `Your final reply was:\n${e.answer}\n\n${EXTRACT}${skip}` })
+      if (!reply.isAnswered) return
+      await update($, items, all => {
+        const seen = new Set(all.map(a => norm(a.text)))
+        const fresh = parse(reply.text).filter(text => !seen.has(norm(text)) && seen.add(norm(text)))
+        return [...all, ...fresh.map((text, i) => ({ id: `${e.turnId}-${i}`, text, verdict: null, note: '' }))]
+      })
     })
     return result
   })
@@ -100,7 +104,7 @@ export const register: Register = on => {
     const list = await read($, items)
     const set = (id: string, change: Partial<Assumption>) =>
       update($, items, all => all.map(a => (a.id === id ? { ...a, ...change } : a)))
-    const wrong = list.filter(a => a.verdict === 'wrong').length
+    const wrong = list.filter(a => a.verdict === 'wrong' && !a.sent).length
 
     return (
       <Box flexDirection="column">
@@ -112,6 +116,7 @@ export const register: Register = on => {
                 {a.verdict === 'right' ? '✓' : a.verdict === 'wrong' ? '✗' : '·'}
               </Text>{' '}
               {i + 1}. {a.text}
+              {a.sent && <Text dimColor> (fix sent)</Text>}
             </Text>
             <Box>
               <Button
@@ -126,7 +131,7 @@ export const register: Register = on => {
                 key={`wrong-${a.id}`}
                 label="Wrong"
                 variant={a.verdict === 'wrong' ? 'primary' : undefined}
-                onPress={() => set(a.id, { verdict: 'wrong' })}
+                onPress={() => set(a.id, { verdict: 'wrong', sent: false })}
               />
               <Text> </Text>
               {e.surface !== 'mobile' && 'Input' in ui && (
