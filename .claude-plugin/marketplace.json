@@ -11,6 +11,10 @@
     {
       "name": "self-critique",
       "source": "./self_critique"
+    },
+    {
+      "name": "speak-selection",
+      "source": "./speak_selection"
     }
   ]
 }

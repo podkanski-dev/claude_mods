@@ -1,0 +1,21 @@
+{
+  "name": "speak-selection",
+  "version": "0.1.0",
+  "description": "Highlight part of the conversation and press ctrl+x s to hear it read aloud",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "voice": {
+      "type": "string",
+      "title": "Voice",
+      "description": "Kokoro voice that reads the selection aloud",
+      "default": "af_heart",
+      "options": ["af_heart", "af_bella", "af_nicole", "af_sarah", "am_michael", "am_adam", "am_fenrir", "bf_emma", "bm_george"]
+    },
+    "speed": {
+      "type": "number",
+      "title": "Speed",
+      "description": "Speaking speed, 1.0 is normal",
+      "default": 1.0
+    }
+  }
+}
