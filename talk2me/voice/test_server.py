@@ -1,6 +1,6 @@
 """Self-check for server.py's queue bookkeeping, no Kokoro or audio needed.
 
-Run: python3 -I speak_selection/voice/test_server.py
+Run: python3 -I talk2me/voice/test_server.py
 """
 import os
 import sys

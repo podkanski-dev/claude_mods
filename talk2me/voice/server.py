@@ -1,4 +1,4 @@
-"""Kokoro voice server for speak-selection, one per Claude Code session.
+"""Kokoro voice server for talk2me, one per Claude Code session.
 
 HTTP over a Unix socket:
   GET  /status -> {"state": "downloading" | "loading" | "idle" | "speaking" | "failed",
@@ -76,7 +76,7 @@ def make_clips(scratch):
         try:
             samples, rate = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
         except Exception as error:  # a bad voice name or odd text must not kill the worker
-            print(f"speak-selection: could not speak {text[:40]!r}: {error}", flush=True)
+            print(f"talk2me: could not speak {text[:40]!r}: {error}", flush=True)
             with lock:
                 busy -= 1
             continue
@@ -200,13 +200,13 @@ def main():
     parser.add_argument("--idle", type=float, default=600)
     args = parser.parse_args()
     if PLAYER is None:
-        raise SystemExit("speak-selection: neither pw-play nor paplay is installed")
+        raise SystemExit("talk2me: neither pw-play nor paplay is installed")
 
     if os.path.exists(args.socket):
         os.unlink(args.socket)
     server = Server(args.socket, Handler)
     bound = os.stat(args.socket).st_ino
-    scratch = tempfile.mkdtemp(prefix="speak-selection-")
+    scratch = tempfile.mkdtemp(prefix="talk2me-")
 
     def watch_idle():
         while True:

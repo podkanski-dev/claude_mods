@@ -7,7 +7,7 @@ const id = Math.random().toString(36).slice(2)
 
 export async function socketPath($: EngineInterface): Promise<string> {
   const dir = (await $.env.get('XDG_RUNTIME_DIR')) ?? '/tmp'
-  return `${dir}/speak-selection-${id}.sock`
+  return `${dir}/talk2me-${id}.sock`
 }
 
 type Status = { state: 'downloading' | 'loading' | 'idle' | 'speaking' | 'failed'; isPlaying?: boolean; error?: string | null }
@@ -38,7 +38,7 @@ export async function ensureVoice($: EngineInterface, socket: string, signal: Ab
     const argv = [
       'uv', 'run', '-q', '--no-project', '--with', 'kokoro-onnx', '--with', 'soundfile',
       'python', '-I', `${$.plugin.root}/voice/server.py`,
-      '--socket', socket, '--cache', `${home}/.cache/speak-selection`, '--idle', '600',
+      '--socket', socket, '--cache', `${home}/.cache/talk2me`, '--idle', '600',
     ]
     // The loop is the server's life: it runs on after this press and ends with
     // the server or with the module.

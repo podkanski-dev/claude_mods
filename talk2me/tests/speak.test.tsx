@@ -2,9 +2,9 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
-const PLUGIN = 'speak-selection'
+const PLUGIN = 'talk2me'
 const BAND = { plugin: PLUGIN, component: 'AbovePrompt', props: { hasSurvey: false } as never } as const
-const HIGHLIGHT = 'Highlight some text first (speak-selection needs fullscreen)'
+const HIGHLIGHT = 'Highlight some text first (talk2me needs fullscreen)'
 
 type Fake = {
   selection?: string
@@ -216,7 +216,7 @@ test('a voice server that exits at once is reported, not waited on', async ($, o
   await clock.advance(2000)
   await pressed
 
-  expect(seen.toasts).toEqual(['speak-selection: the voice stopped: error: uv: command not found'])
+  expect(seen.toasts).toEqual(['talk2me: the voice stopped: error: uv: command not found'])
 })
 
 test('a block the model has no words for is skipped, the rest is read', async ($, on) => {

@@ -3,7 +3,7 @@ export type Phase = 'idle' | 'processing' | 'speaking'
 
 declare module 'claude-code' {
   interface PluginState {
-    'speak-selection': {
+    'talk2me': {
       phase: Phase
     }
   }

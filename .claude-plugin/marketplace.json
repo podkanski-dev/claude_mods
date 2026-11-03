@@ -1,5 +1,5 @@
 {
-  "name": "claude-mods",
+  "name": "kpodkanski-mods",
   "owner": {
     "name": "Karol Podkanski"
   },
@@ -13,8 +13,8 @@
       "source": "./self_critique"
     },
     {
-      "name": "speak-selection",
-      "source": "./speak_selection"
+      "name": "talk2me",
+      "source": "./talk2me"
     }
   ]
 }

@@ -13,7 +13,7 @@ import { ensureVoice, isAudible, isBusy, say, socketPath, stopVoice } from './vo
 
 export const KEY_ACTION = 'app:toggleDiffNoiseFilter'
 
-const phase = atom({ plugin: 'speak-selection', key: 'phase' } as const, 'idle' as Phase)
+const phase = atom({ plugin: 'talk2me', key: 'phase' } as const, 'idle' as Phase)
 
 // Each press starts a new run; a run whose number is no longer current has
 // been stopped and must not post anything more to the voice. `active` is
@@ -56,7 +56,7 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
   const selection = await $.ui.selection()
   const { blocks, isTruncated } = splitBlocks(selection?.text ?? '')
   if (blocks.length === 0) {
-    $.ui.toast('Highlight some text first (speak-selection needs fullscreen)')
+    $.ui.toast('Highlight some text first (talk2me needs fullscreen)')
     return
   }
   await update($, phase, () => 'processing')
@@ -64,7 +64,7 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
   try {
     await ensureVoice($, socket, signal)
   } catch (error) {
-    if (isCurrent()) $.ui.toast(`speak-selection: ${(error as Error).message}`)
+    if (isCurrent()) $.ui.toast(`talk2me: ${(error as Error).message}`)
     return
   }
   if (isTruncated) $.ui.toast('Reading the first part only')
