@@ -23,7 +23,7 @@ The voice is [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a small text
 In Claude Code:
 
 ```text
-/plugin marketplace add <github-user>/claude_mods
+/plugin marketplace add podkanski-dev/claude_mods
 /plugin install talk2me@kpodkanski-mods
 ```
 
