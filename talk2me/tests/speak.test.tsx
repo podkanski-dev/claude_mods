@@ -4,10 +4,12 @@ import type { On } from 'claude-code'
 const usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 const PLUGIN = 'talk2me'
 const BAND = { plugin: PLUGIN, component: 'AbovePrompt', props: { hasSurvey: false } as never } as const
-const HIGHLIGHT = 'Highlight some text first (talk2me needs fullscreen)'
+const NOTHING = 'Nothing to read yet: highlight some text or wait for a reply'
 
 type Fake = {
   selection?: string
+  // The transcript, for when nothing is highlighted.
+  messages?: { role: 'user' | 'assistant'; text: string; toolResults?: unknown[] }[]
   replies?: (block: string) => Promise<{ text: string } | { reason: 'api-error' | 'aborted' | 'empty-reply' }>
   states?: string[]
   // How the first spawned voice server behaves: keeps running (default),
@@ -18,7 +20,7 @@ type Fake = {
 
 // Stands in for the engine: the selection, Haiku, the voice server on its
 // local port, toasts. Records what the mod asked for.
-function fake(on: On, { selection, replies, states = [], child }: Fake) {
+function fake(on: On, { selection, messages = [], replies, states = [], child }: Fake) {
   const seen = {
     prompts: [] as { model: string; prompt: string }[],
     says: [] as string[],
@@ -28,6 +30,7 @@ function fake(on: On, { selection, replies, states = [], child }: Fake) {
     toasts: [] as string[],
   }
   on('ui.selection', () => ({ value: selection === undefined ? undefined : { text: selection } }))
+  on('session.messages', () => ({ value: messages.map(m => ({ toolUses: [], ...m })) as never }))
   on('model.complete', async (_, e) => {
     seen.prompts.push({ model: e.model, prompt: e.prompt })
     const r = replies ? await replies(e.prompt) : { text: `spoken: ${e.prompt}` }
@@ -75,14 +78,34 @@ function fake(on: On, { selection, replies, states = [], child }: Fake) {
 }
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`nothing highlighted: a toast and no rewrite (${surface})`, async ($, on) => {
+  test(`nothing highlighted and no reply yet: a toast and no rewrite (${surface})`, async ($, on) => {
     mock.clock(on)
-    const seen = fake(on, {})
+    const seen = fake(on, { messages: [{ role: 'user', text: 'hi' }] })
     const band = await $.ui.mount({ ...BAND, surface })
     await band.press({ key: 'speak' })
 
-    expect(seen.toasts).toEqual([HIGHLIGHT])
+    expect(seen.toasts).toEqual([NOTHING])
     expect(seen.prompts).toEqual([])
+  })
+
+  test(`nothing highlighted: Claude's whole latest reply is read (${surface})`, async ($, on) => {
+    mock.clock(on)
+    const seen = fake(on, {
+      messages: [
+        { role: 'user', text: 'first question' },
+        { role: 'assistant', text: 'Old answer.' },
+        { role: 'user', text: 'second question' },
+        { role: 'assistant', text: 'Checking.' },
+        { role: 'user', text: '', toolResults: [{}] },
+        { role: 'assistant', text: '' },
+        { role: 'user', text: '', toolResults: [{}] },
+        { role: 'assistant', text: 'Done.\n\nAll good.' },
+      ],
+    })
+    const band = await $.ui.mount({ ...BAND, surface })
+    await band.press({ key: 'speak' })
+
+    expect(seen.prompts.map(p => p.prompt)).toEqual(['Checking.', 'Done.', 'All good.'])
   })
 
   test(`each block is rewritten by haiku and spoken in order (${surface})`, async ($, on) => {

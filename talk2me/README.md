@@ -1,6 +1,6 @@
 # talk2me
 
-Have Claude Code read its replies to you. Highlight any part of the conversation, press `ctrl+x s`, and you hear it.
+Have Claude Code read its replies to you. Highlight any part of the conversation, press `ctrl+x s`, and you hear it. With nothing highlighted, it reads Claude's latest reply.
 
 It doesn't just read the raw text aloud. Before speaking, the selection is rewritten for listening:
 
@@ -13,7 +13,7 @@ The voice is [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a small text
 
 ## Requirements
 
-- **Claude Code in fullscreen layout.** The mod reads your mouse selection, and Claude Code only exposes it in fullscreen. Set `"tui": "fullscreen"` in your Claude Code `settings.json`.
+- **Claude Code in fullscreen layout.** The mod reads your mouse selection, and Claude Code only exposes it in fullscreen. Without fullscreen you can still hear Claude's latest reply. Set `"tui": "fullscreen"` in your Claude Code `settings.json`.
 - **An audio player.** On Linux that's PipeWire (`pw-play`) or PulseAudio (`paplay`). On macOS it's the built-in `afplay`. On Windows it's Python's built-in `winsound`. Nothing extra to install on macOS or Windows.
 - **[uv](https://docs.astral.sh/uv/).** The voice server runs as a small Python process that `uv` sets up on first use.
 - **About 340 MB of disk space** for the voice model. It downloads to `~/.cache/talk2me/` the first time you use the mod.
@@ -54,7 +54,7 @@ Restart Claude Code if the key doesn't work straight away.
 
 ## Use
 
-1. Highlight any part of the conversation with the mouse.
+1. Highlight any part of the conversation with the mouse, or highlight nothing to hear Claude's latest reply.
 2. Press `ctrl+x s`. You can also click the **🔊 talk2me** button above the prompt, or type `/speak`.
 3. The button shows **◌ processing…** while the text is rewritten and the voice starts, then **■ speaking…** once you hear it.
 4. Press `ctrl+x s` again (or the button) to stop.
@@ -85,7 +85,7 @@ The mod splits the selection into blocks, keeping each table and piece of code w
 
 | You see | What to do |
 |---|---|
-| "Highlight some text first (talk2me needs fullscreen)" | Turn on fullscreen layout, then highlight text before pressing the key. |
+| "Nothing to read yet: highlight some text or wait for a reply" | Claude hasn't replied yet in this session. To read a selection, turn on fullscreen layout and highlight text before pressing the key. |
 | The key does nothing | Check `keybindings.json`, restart Claude Code, or use the 🔊 talk2me button or `/speak`. The key doesn't work while the diff panel is open. |
 | "the voice stopped: …" | The voice server couldn't start. Check that `uv` is installed, and on Linux `pw-play` or `paplay`. The message shows the server's last line. |
 | "the voice could not load: …" | The model download failed. Press again to retry: the server restarts by itself after a failure. |

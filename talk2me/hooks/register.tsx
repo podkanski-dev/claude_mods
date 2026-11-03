@@ -4,7 +4,7 @@
 // The action has no default key and its engine handler only mounts with the
 // diff panel, so the chord reaches the button everywhere else.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, PluginOptions, Register } from 'claude-code'
+import type { EngineInterface, PluginOptions, Register, SessionMessage } from 'claude-code'
 
 import type { Phase } from '../types'
 import { splitBlocks } from './blocks'
@@ -52,10 +52,11 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
 
 async function speak($: EngineInterface, options: PluginOptions, mine: number, signal: AbortSignal): Promise<void> {
   const isCurrent = () => mine === run
-  const selection = await $.ui.selection()
-  const { blocks, isTruncated } = splitBlocks(selection?.text ?? '')
+  const selection = (await $.ui.selection())?.text ?? ''
+  const text = selection.trim() ? selection : latestReply(await $.session.messages())
+  const { blocks, isTruncated } = splitBlocks(text)
   if (blocks.length === 0) {
-    $.ui.toast('Highlight some text first (talk2me needs fullscreen)')
+    $.ui.toast('Nothing to read yet: highlight some text or wait for a reply')
     return
   }
   await update($, phase, () => 'processing')
@@ -90,6 +91,18 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
   while (isCurrent() && (await isBusy($))) {
     await $.clock.sleep(500, { signal }).catch(() => undefined)
   }
+}
+
+// Claude's latest reply: the text of every assistant message since the last
+// prompt, across its tool calls. Trailing user rows (a /speak) are passed over.
+function latestReply(messages: readonly SessionMessage[]): string {
+  const texts: string[] = []
+  for (const m of [...messages].reverse()) {
+    if (m.role === 'assistant') {
+      if (m.text.trim()) texts.unshift(m.text)
+    } else if (!m.toolResults?.length && texts.length > 0) break
+  }
+  return texts.join('\n\n')
 }
 
 // Flips the label from processing to speaking once sound actually comes out,
