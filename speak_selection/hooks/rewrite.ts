@@ -26,5 +26,5 @@ export async function rewriteBlock(
   if (r.isAnswered) {
     return { text: r.text }
   }
-  return { error: r.reason === 'api-error' && r.status !== null ? `api-error ${r.status}` : r.reason }
+  return { error: r.reason === 'api-error' && r.status != null ? `api-error ${r.status}` : r.reason }
 }
