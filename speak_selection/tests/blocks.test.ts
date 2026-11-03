@@ -20,3 +20,8 @@ test('long input is cut at a block boundary', () => {
 test('empty or whitespace-only input yields no blocks', () => {
   expect(splitBlocks('  \n\n ').blocks).toEqual([])
 })
+
+test('code with blank lines inside stays one block', () => {
+  const code = 'def a():\n    return 1\n\ndef b():\n    return 2'
+  expect(splitBlocks(`Here it is:\n\n${code}\n\nThat is all.`).blocks).toEqual(['Here it is:', code, 'That is all.'])
+})

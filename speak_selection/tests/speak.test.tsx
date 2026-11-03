@@ -8,13 +8,16 @@ const HIGHLIGHT = 'Highlight some text first (speak-selection needs fullscreen)'
 
 type Fake = {
   selection?: string
-  replies?: (block: string) => Promise<{ text: string } | { reason: 'api-error' | 'aborted' }>
+  replies?: (block: string) => Promise<{ text: string } | { reason: 'api-error' | 'aborted' | 'empty-reply' }>
   states?: string[]
+  // How the spawned voice server behaves: ends at once (default), exits with
+  // an error line, or keeps running until the promise settles.
+  child?: 'exits' | Promise<void>
 }
 
 // Stands in for the engine: the selection, Haiku, the voice server's socket,
 // toasts. Records what the mod asked for.
-function fake(on: On, { selection, replies, states = [] }: Fake) {
+function fake(on: On, { selection, replies, states = [], child }: Fake) {
   const seen = { prompts: [] as { model: string; prompt: string }[], says: [] as string[], stops: 0, spawns: [] as string[][], toasts: [] as string[] }
   on('ui.selection', () => ({ value: selection === undefined ? undefined : { text: selection } }))
   on('model.complete', async (_, e) => {
@@ -36,6 +39,11 @@ function fake(on: On, { selection, replies, states = [] }: Fake) {
   })
   on('process.spawn', async function* (_: unknown, e: { argv: readonly string[] }) {
     seen.spawns.push([...e.argv])
+    if (child === 'exits') {
+      yield { stream: 'stderr', text: 'error: uv: command not found\n' }
+      return { value: { code: 127, signal: null } }
+    }
+    await child
     return { value: { code: 0, signal: null } }
   } as never)
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
@@ -127,10 +135,97 @@ test('a voice server that is gone is started again, with the first-run toast whi
 })
 
 test('/speak does what the button does', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   const seen = fake(on, { selection: 'Hi.' })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true } as never)
   await $.command.run({ command: 'speak', args: '' } as never)
+  await clock.settle()
 
   expect(seen.says).toEqual(['spoken: Hi.'])
+})
+
+test('/speak returns at once and speaks in the background', async ($, on) => {
+  const clock = mock.clock(on)
+  let release = () => {}
+  let rewriting = () => {}
+  const isRewriting = new Promise<void>(resolve => (rewriting = resolve))
+  const seen = fake(on, {
+    selection: 'Hi.',
+    replies: block => {
+      rewriting()
+      return new Promise(resolve => (release = () => resolve({ text: block })))
+    },
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true } as never)
+  await $.command.run({ command: 'speak', args: '' } as never)
+
+  expect(seen.says).toEqual([])
+  await isRewriting
+  release()
+  for (let i = 0; i < 50 && seen.says.length === 0; i++) await clock.advance(100)
+  expect(seen.says).toEqual(['Hi.'])
+})
+
+test('a model call that is refused says why, and the next press speaks again', async ($, on) => {
+  mock.clock(on)
+  let isRefused = true
+  const seen = fake(on, {
+    selection: 'Hi.',
+    replies: async block => {
+      if (isRefused) throw new Error('model blocked')
+      return { text: block }
+    },
+  })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'speak' })
+  expect(seen.toasts.length).toBe(1)
+  expect(seen.toasts[0]).toContain("Couldn't rewrite the selection")
+
+  isRefused = false
+  await band.press({ key: 'speak' })
+  expect(seen.says).toEqual(['Hi.'])
+})
+
+test('stopping while the voice starts, then pressing again, starts only one server', async ($, on) => {
+  const clock = mock.clock(on)
+  let end = () => {}
+  const running = new Promise<void>(resolve => (end = resolve))
+  const seen = fake(on, { selection: 'Hi.', states: ['down', 'down', 'down', 'down', 'down', 'idle'], child: running })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  const first = band.press({ key: 'speak' })
+  await clock.advance(600)
+  await band.press({ key: 'speak' })
+  await first
+  const second = band.press({ key: 'speak' })
+  await clock.advance(5000)
+  await second
+
+  expect(seen.spawns.length).toBe(1)
+  expect(seen.says).toEqual(['spoken: Hi.'])
+  end()
+})
+
+test('a voice server that exits at once is reported, not waited on', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = fake(on, { selection: 'Hi.', states: Array(20).fill('down'), child: 'exits' })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const pressed = band.press({ key: 'speak' })
+  await clock.advance(2000)
+  await pressed
+
+  expect(seen.toasts).toEqual(['speak-selection: the voice stopped: error: uv: command not found'])
+})
+
+test('a block the model has no words for is skipped, the rest is read', async ($, on) => {
+  mock.clock(on)
+  const seen = fake(on, {
+    selection: 'One.\n\n────\n\nTwo.',
+    replies: async block => (block === '────' ? { reason: 'empty-reply' } : { text: block }),
+  })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'speak' })
+
+  expect(seen.toasts).toEqual([])
+  expect(seen.says).toEqual(['One.', 'Two.'])
 })

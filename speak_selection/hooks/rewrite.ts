@@ -11,20 +11,31 @@ Rules:
 
 const CONTINUATION = '\n\nThis text continues something already being read aloud, so do not open with a greeting or an introduction.'
 
+// `text` is empty when the model found nothing to say (a drawn rule, say):
+// the caller skips that block.
 export async function rewriteBlock(
   $: EngineInterface,
   block: string,
   isFirst: boolean,
 ): Promise<{ text: string } | { error: string }> {
-  const r = await $.model.complete({
-    model: 'haiku',
-    system: isFirst ? REWRITE_SYSTEM : REWRITE_SYSTEM + CONTINUATION,
-    prompt: block,
-    effort: 'low',
-    maxTokens: 4096,
-  })
+  let r
+  try {
+    r = await $.model.complete({
+      model: 'haiku',
+      system: isFirst ? REWRITE_SYSTEM : REWRITE_SYSTEM + CONTINUATION,
+      prompt: block,
+      effort: 'low',
+      maxTokens: 4096,
+    })
+  } catch (error) {
+    // The engine refused to send it: a blocked model, a policy.
+    return { error: (error as Error).message }
+  }
   if (r.isAnswered) {
     return { text: r.text }
+  }
+  if (r.reason === 'empty-reply') {
+    return { text: '' }
   }
   return { error: r.reason === 'api-error' && r.status != null ? `api-error ${r.status}` : r.reason }
 }

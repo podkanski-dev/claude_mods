@@ -21,11 +21,19 @@ async function status($: EngineInterface, socket: string): Promise<Status | null
   }
 }
 
+// The voice server this module started, while it runs. `uv` can take tens
+// of seconds to set up before the socket answers, so a press in that time
+// must wait for this one rather than start a second.
+type Child = { lastLine: string; hasExited: boolean }
+let child: Child | null = null
+
 // Starts the session's voice server when none answers (first press, or it
 // exited after idling) and waits until Kokoro is loaded.
 export async function ensureVoice($: EngineInterface, socket: string, signal: AbortSignal): Promise<void> {
   let s = await status($, socket)
-  if (s === null) {
+  if (s === null && child === null) {
+    const started: Child = { lastLine: '', hasExited: false }
+    child = started
     const home = await $.env.get('HOME')
     const argv = [
       'uv', 'run', '-q', '--no-project', '--with', 'kokoro-onnx', '--with', 'soundfile',
@@ -35,9 +43,18 @@ export async function ensureVoice($: EngineInterface, socket: string, signal: Ab
     // The loop is the server's life: it runs on after this press and ends with
     // the server or with the module.
     void (async () => {
-      for await (const { text } of $.process.spawn({ argv })) $.ui.log(text, { to: 'debug' })
-    })().catch(error => $.ui.log(`voice server: ${error}`, { to: 'debug' }))
+      for await (const { text } of $.process.spawn({ argv })) {
+        $.ui.log(text, { to: 'debug' })
+        started.lastLine = text.trim().split('\n').at(-1) ?? started.lastLine
+      }
+    })()
+      .catch(error => (started.lastLine = String(error)))
+      .finally(() => {
+        started.hasExited = true
+        if (child === started) child = null
+      })
   }
+  const waitingOn = child
 
   let isToldDownloading = false
   const deadline = (await $.clock.now()) + LOAD_LIMIT_MS
@@ -46,6 +63,7 @@ export async function ensureVoice($: EngineInterface, socket: string, signal: Ab
       isToldDownloading = true
       $.ui.toast(FIRST_RUN)
     }
+    if (s === null && waitingOn?.hasExited) throw new Error(`the voice stopped: ${waitingOn.lastLine}`)
     if ((await $.clock.now()) > deadline) throw new Error('the voice did not start within 5 minutes')
     await $.clock.sleep(500, { signal })
     s = await status($, socket)

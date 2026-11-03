@@ -42,13 +42,21 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
     await update($, isSpeaking, () => false)
   }
 
-  const socket = await socketPath($)
+  try {
+    await speak($, options, mine, signal)
+  } finally {
+    await finish()
+  }
+}
 
+async function speak($: EngineInterface, options: PluginOptions, mine: number, signal: AbortSignal): Promise<void> {
+  const isCurrent = () => mine === run
+  const socket = await socketPath($)
   const selection = await $.ui.selection()
   const { blocks, isTruncated } = splitBlocks(selection?.text ?? '')
   if (blocks.length === 0) {
     $.ui.toast('Highlight some text first (speak-selection needs fullscreen)')
-    return finish()
+    return
   }
   await update($, isSpeaking, () => true)
 
@@ -56,7 +64,7 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
     await ensureVoice($, socket, signal)
   } catch (error) {
     if (isCurrent()) $.ui.toast(`speak-selection: ${(error as Error).message}`)
-    return finish()
+    return
   }
   if (isTruncated) $.ui.toast('Reading the first part only')
 
@@ -68,15 +76,14 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
     if ('error' in r) {
       $.ui.toast(`Couldn't rewrite the selection: ${r.error}`)
       await stopVoice($, socket)
-      return finish()
+      return
     }
-    await say($, socket, r.text, voice, speed)
+    if (r.text.trim()) await say($, socket, r.text, voice, speed)
   }
 
   while (isCurrent() && (await isPlaying($, socket))) {
     await $.clock.sleep(500, { signal }).catch(() => undefined)
   }
-  return finish()
 }
 
 export const register: Register = (on, options) => {
@@ -86,8 +93,9 @@ export const register: Register = (on, options) => {
     return started
   })
 
-  on('command.run', { command: 'speak' }, async $ => {
-    await toggleSpeak($, options)
+  // Not awaited: speaking outlasts a hook's time budget.
+  on('command.run', { command: 'speak' }, $ => {
+    void toggleSpeak($, options)
     return { text: '' }
   })
 

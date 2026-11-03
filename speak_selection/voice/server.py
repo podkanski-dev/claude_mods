@@ -12,6 +12,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import socketserver
 import subprocess
 import tempfile
@@ -27,6 +28,7 @@ PLAYER = shutil.which("pw-play") or shutil.which("paplay")
 lock = threading.Lock()
 kokoro = None
 load_error = None
+failed_at = 0.0
 is_downloading = False
 generation = 0  # bumped by /stop; work from an older generation is dropped
 sentences: queue.Queue = queue.Queue()
@@ -37,10 +39,11 @@ last_request = time.monotonic()
 
 
 def load(cache):
-    global kokoro, load_error
+    global kokoro, load_error, failed_at
     try:
         kokoro = open_kokoro(cache)
-    except Exception as error:  # no network, disk full: say so instead of loading forever
+    except Exception as error:  # no network, disk full: say so, then exit so the next press retries
+        failed_at = time.monotonic()
         load_error = str(error)
 
 
@@ -51,6 +54,7 @@ def open_kokoro(cache):
         path = os.path.join(cache, name)
         if not os.path.exists(path):
             is_downloading = True
+            socket.setdefaulttimeout(60)  # a stalled download fails instead of hanging
             urllib.request.urlretrieve(f"{RELEASE}/{name}", path + ".part")
             os.replace(path + ".part", path)
     is_downloading = False
@@ -61,12 +65,12 @@ def open_kokoro(cache):
 
 def make_clips(scratch):
     """Synthesizes queued sentences into WAV files while earlier ones play."""
-    import soundfile
-
     global busy
     while True:
         gen, text, voice, speed = sentences.get()
         if gen != generation:
+            with lock:
+                busy -= 1
             continue
         try:
             samples, rate = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
@@ -75,6 +79,8 @@ def make_clips(scratch):
             with lock:
                 busy -= 1
             continue
+        import soundfile
+
         path = os.path.join(scratch, f"{time.monotonic_ns()}.wav")
         soundfile.write(path, samples, rate)
         clips.put((gen, path))
@@ -117,11 +123,17 @@ def stop():
 def say(text, voice, speed):
     global busy
     parts = [p for p in re.split(r"(?<=[.!?])\s+", text.strip()) if p]
+    # Under the lock, so a /stop can't land between counting and queueing.
     with lock:
         busy += len(parts)
-        gen = generation
-    for part in parts:
-        sentences.put((gen, part, voice, speed))
+        for part in parts:
+            sentences.put((generation, part, voice, speed))
+
+
+def should_exit(now, idle):
+    if load_error is not None:
+        return now - failed_at > 10  # long enough for the mod to read the error
+    return state() == "idle" and now - last_request > idle
 
 
 def state():
@@ -192,12 +204,13 @@ def main():
     if os.path.exists(args.socket):
         os.unlink(args.socket)
     server = Server(args.socket, Handler)
+    bound = os.stat(args.socket).st_ino
     scratch = tempfile.mkdtemp(prefix="speak-selection-")
 
     def watch_idle():
         while True:
             time.sleep(5)
-            if state() == "idle" and time.monotonic() - last_request > args.idle:
+            if should_exit(time.monotonic(), args.idle):
                 server.shutdown()
                 return
 
@@ -209,7 +222,9 @@ def main():
         server.serve_forever()
     finally:
         server.server_close()
-        os.unlink(args.socket)
+        # Only our own socket: a newer server may have taken the path.
+        if os.path.exists(args.socket) and os.stat(args.socket).st_ino == bound:
+            os.unlink(args.socket)
         shutil.rmtree(scratch, ignore_errors=True)
 
 
