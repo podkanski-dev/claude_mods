@@ -14,9 +14,12 @@ The voice is [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a small text
 ## Requirements
 
 - **Claude Code in fullscreen layout.** The mod reads your mouse selection, and Claude Code only exposes it in fullscreen. Set `"tui": "fullscreen"` in your Claude Code `settings.json`.
-- **Linux** with PipeWire (`pw-play`) or PulseAudio (`paplay`) for playback.
+- **An audio player.** On Linux that's PipeWire (`pw-play`) or PulseAudio (`paplay`). On macOS it's the built-in `afplay`. On Windows it's Python's built-in `winsound`. Nothing extra to install on macOS or Windows.
 - **[uv](https://docs.astral.sh/uv/).** The voice server runs as a small Python process that `uv` sets up on first use.
 - **About 340 MB of disk space** for the voice model. It downloads to `~/.cache/talk2me/` the first time you use the mod.
+
+> [!NOTE]
+> It's tested on Linux. macOS and Windows support is written and unit-tested but hasn't been tried on a real Mac or Windows PC yet. Please open an issue if something doesn't work there.
 
 ## Install
 
@@ -76,7 +79,7 @@ Two things happen to your selection:
 
 ## How it works
 
-The mod splits the selection into blocks, keeping each table and piece of code whole. It rewrites the first block with Haiku and starts speaking it while the rest are still being rewritten. A small Python server (`voice/server.py`) keeps Kokoro loaded and plays the audio sentence by sentence. Each Claude Code session runs its own server, reached over a Unix socket, and the server shuts down after 10 minutes without use.
+The mod splits the selection into blocks, keeping each table and piece of code whole. It rewrites the first block with Haiku and starts speaking it while the rest are still being rewritten. A small Python server (`voice/server.py`) keeps Kokoro loaded and plays the audio sentence by sentence. Each Claude Code session runs its own server. It listens only on `127.0.0.1`, answers only requests that carry a secret the mod generates for that session, and shuts down after 10 minutes without use.
 
 ## Troubleshooting
 
@@ -84,7 +87,7 @@ The mod splits the selection into blocks, keeping each table and piece of code w
 |---|---|
 | "Highlight some text first (talk2me needs fullscreen)" | Turn on fullscreen layout, then highlight text before pressing the key. |
 | The key does nothing | Check `keybindings.json`, restart Claude Code, or use the 🔊 talk2me button or `/speak`. The key doesn't work while the diff panel is open. |
-| "the voice stopped: …" | The voice server couldn't start. Check that `uv` and `pw-play` or `paplay` are installed. The message shows the server's last line. |
+| "the voice stopped: …" | The voice server couldn't start. Check that `uv` is installed, and on Linux `pw-play` or `paplay`. The message shows the server's last line. |
 | "the voice could not load: …" | The model download failed. Press again to retry: the server restarts by itself after a failure. |
 
 For more detail, start Claude Code with `claude --debug`. The voice server's output goes to the debug log.

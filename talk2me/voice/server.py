@@ -1,6 +1,7 @@
 """Kokoro voice server for talk2me, one per Claude Code session.
 
-HTTP over a Unix socket:
+HTTP on a port of 127.0.0.1 it picks and prints as "TALK2ME_PORT <n>".
+Every request must carry "Authorization: Bearer $TALK2ME_TOKEN".
   GET  /status -> {"state": "downloading" | "loading" | "idle" | "speaking" | "failed",
                    "isPlaying": bool (audio coming out right now), "error"?}
   POST /say    {"text", "voice", "speed"} -> 202, queued and spoken sentence by sentence
@@ -13,18 +14,55 @@ import os
 import queue
 import re
 import shutil
+import secrets
 import socket
-import socketserver
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import urllib.request
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RELEASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
-PLAYER = shutil.which("pw-play") or shutil.which("paplay")
+CACHE = os.path.join(os.path.expanduser("~"), ".cache", "talk2me")
+TOKEN = os.environ.get("TALK2ME_TOKEN", "")
+
+
+def player_for(platform, which=shutil.which):
+    """The command that plays a WAV file here, "winsound" on Windows, or None."""
+    if platform == "win32":
+        return "winsound"
+    names = ("afplay",) if platform == "darwin" else ("pw-play", "paplay")
+    for name in names:
+        path = which(name)
+        if path:
+            return [path]
+    return None
+
+
+class WinsoundPlayer:
+    """Plays a WAV with Windows' built-in winsound, shaped like a Popen."""
+
+    def __init__(self, path):
+        import soundfile
+        import winsound
+
+        self.winsound = winsound
+        self.stopped = threading.Event()
+        self.seconds = soundfile.info(path).duration
+        winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+
+    def wait(self):
+        self.stopped.wait(self.seconds)
+
+    def terminate(self):
+        self.winsound.PlaySound(None, 0)
+        self.stopped.set()
+
+
+PLAYER = player_for(sys.platform)
 
 lock = threading.Lock()
 kokoro = None
@@ -93,7 +131,10 @@ def play_clips():
         gen, path = clips.get()
         if gen == generation:
             with lock:
-                player = subprocess.Popen([PLAYER, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if PLAYER == "winsound":
+                    player = WinsoundPlayer(path)
+                else:
+                    player = subprocess.Popen([*PLAYER, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             player.wait()
             with lock:
                 player = None
@@ -146,7 +187,16 @@ def state():
 
 
 class Handler(BaseHTTPRequestHandler):
+    def is_allowed(self):
+        given = self.headers.get("Authorization", "")
+        if TOKEN and secrets.compare_digest(given, f"Bearer {TOKEN}"):
+            return True
+        self.reply(403, {"error": "forbidden"})
+        return False
+
     def do_GET(self):
+        if not self.is_allowed():
+            return
         self.touch()
         if self.path == "/status":
             self.reply(200, {"state": state(), "isPlaying": player is not None, "error": load_error})
@@ -154,6 +204,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404, {"error": "not found"})
 
     def do_POST(self):
+        if not self.is_allowed():
+            return
         self.touch()
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         if self.path == "/stop":
@@ -182,30 +234,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def address_string(self):
-        return "unix"
-
     def log_message(self, *args):
         pass
 
 
-class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
-    daemon_threads = True
-
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--socket", required=True)
-    parser.add_argument("--cache", required=True)
+    parser.add_argument("--cache", default=CACHE)
     parser.add_argument("--idle", type=float, default=600)
     args = parser.parse_args()
     if PLAYER is None:
-        raise SystemExit("talk2me: neither pw-play nor paplay is installed")
+        raise SystemExit("talk2me: no audio player found (install pw-play or paplay)")
+    if not TOKEN:
+        raise SystemExit("talk2me: TALK2ME_TOKEN is not set")
 
-    if os.path.exists(args.socket):
-        os.unlink(args.socket)
-    server = Server(args.socket, Handler)
-    bound = os.stat(args.socket).st_ino
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    print(f"TALK2ME_PORT {server.server_address[1]}", flush=True)
     scratch = tempfile.mkdtemp(prefix="talk2me-")
 
     def watch_idle():
@@ -223,9 +268,6 @@ def main():
         server.serve_forever()
     finally:
         server.server_close()
-        # Only our own socket: a newer server may have taken the path.
-        if os.path.exists(args.socket) and os.stat(args.socket).st_ino == bound:
-            os.unlink(args.socket)
         shutil.rmtree(scratch, ignore_errors=True)
 
 

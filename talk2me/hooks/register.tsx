@@ -9,7 +9,7 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import type { Phase } from '../types'
 import { splitBlocks } from './blocks'
 import { rewriteBlock } from './rewrite'
-import { ensureVoice, isAudible, isBusy, say, socketPath, stopVoice } from './voice'
+import { ensureVoice, isAudible, isBusy, say, stopVoice } from './voice'
 
 export const KEY_ACTION = 'app:toggleDiffNoiseFilter'
 
@@ -27,7 +27,7 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
     run += 1
     active = 0
     stopRun.abort()
-    await stopVoice($, await socketPath($))
+    await stopVoice($)
     await update($, phase, () => 'idle')
     return
   }
@@ -52,7 +52,6 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
 
 async function speak($: EngineInterface, options: PluginOptions, mine: number, signal: AbortSignal): Promise<void> {
   const isCurrent = () => mine === run
-  const socket = await socketPath($)
   const selection = await $.ui.selection()
   const { blocks, isTruncated } = splitBlocks(selection?.text ?? '')
   if (blocks.length === 0) {
@@ -62,7 +61,7 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
   await update($, phase, () => 'processing')
 
   try {
-    await ensureVoice($, socket, signal)
+    await ensureVoice($, signal)
   } catch (error) {
     if (isCurrent()) $.ui.toast(`talk2me: ${(error as Error).message}`)
     return
@@ -77,27 +76,27 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
     if (!isCurrent()) return
     if ('error' in r) {
       $.ui.toast(`Couldn't rewrite the selection: ${r.error}`)
-      await stopVoice($, socket)
+      await stopVoice($)
       return
     }
     if (!r.text.trim()) continue
-    await say($, socket, r.text, voice, speed)
+    await say($, r.text, voice, speed)
     if (!isWatching) {
       isWatching = true
-      void watchForAudio($, socket, isCurrent, signal).catch(() => undefined)
+      void watchForAudio($, isCurrent, signal).catch(() => undefined)
     }
   }
 
-  while (isCurrent() && (await isBusy($, socket))) {
+  while (isCurrent() && (await isBusy($))) {
     await $.clock.sleep(500, { signal }).catch(() => undefined)
   }
 }
 
 // Flips the label from processing to speaking once sound actually comes out,
 // while later blocks may still be rewriting.
-async function watchForAudio($: EngineInterface, socket: string, isCurrent: () => boolean, signal: AbortSignal) {
+async function watchForAudio($: EngineInterface, isCurrent: () => boolean, signal: AbortSignal) {
   while (isCurrent() && !signal.aborted && (await read($, phase)) === 'processing') {
-    if (await isAudible($, socket)) {
+    if (await isAudible($)) {
       if (isCurrent()) await update($, phase, () => 'speaking')
       return
     }

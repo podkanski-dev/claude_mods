@@ -10,15 +10,23 @@ type Fake = {
   selection?: string
   replies?: (block: string) => Promise<{ text: string } | { reason: 'api-error' | 'aborted' | 'empty-reply' }>
   states?: string[]
-  // How the spawned voice server behaves: ends at once (default), exits with
-  // an error line, or keeps running until the promise settles.
+  // How the first spawned voice server behaves: keeps running (default),
+  // exits at once with an error line, or runs until the promise settles.
+  // Any later one keeps running.
   child?: 'exits' | Promise<void>
 }
 
-// Stands in for the engine: the selection, Haiku, the voice server's socket,
-// toasts. Records what the mod asked for.
+// Stands in for the engine: the selection, Haiku, the voice server on its
+// local port, toasts. Records what the mod asked for.
 function fake(on: On, { selection, replies, states = [], child }: Fake) {
-  const seen = { prompts: [] as { model: string; prompt: string }[], says: [] as string[], stops: 0, spawns: [] as string[][], toasts: [] as string[] }
+  const seen = {
+    prompts: [] as { model: string; prompt: string }[],
+    says: [] as string[],
+    stops: 0,
+    spawns: [] as { argv: string[]; env: Record<string, string> }[],
+    requests: [] as { url: string; auth?: string }[],
+    toasts: [] as string[],
+  }
   on('ui.selection', () => ({ value: selection === undefined ? undefined : { text: selection } }))
   on('model.complete', async (_, e) => {
     seen.prompts.push({ model: e.model, prompt: e.prompt })
@@ -28,6 +36,7 @@ function fake(on: On, { selection, replies, states = [], child }: Fake) {
       : { value: { isAnswered: false as const, reason: r.reason as 'aborted', usage } }
   })
   on('http.fetch', (_, e) => {
+    seen.requests.push({ url: e.url, auth: e.init?.headers?.Authorization })
     if (e.url.endsWith('/status')) {
       const state = states.shift() ?? 'idle'
       if (state === 'down') throw new Error('ECONNREFUSED')
@@ -39,13 +48,15 @@ function fake(on: On, { selection, replies, states = [], child }: Fake) {
     if (e.url.endsWith('/stop')) seen.stops += 1
     return { value: { status: 202, ok: true, headers: {}, text: '{}' } }
   })
-  on('process.spawn', async function* (_: unknown, e: { argv: readonly string[] }) {
-    seen.spawns.push([...e.argv])
-    if (child === 'exits') {
+  on('process.spawn', async function* (_: unknown, e: { argv: readonly string[]; env?: Record<string, string> }) {
+    seen.spawns.push({ argv: [...e.argv], env: { ...e.env } })
+    const behaviour = seen.spawns.length === 1 ? child : undefined
+    if (behaviour === 'exits') {
       yield { stream: 'stderr', text: 'error: uv: command not found\n' }
       return { value: { code: 127, signal: null } }
     }
-    await child
+    yield { stream: 'stdout', text: 'TALK2ME_PORT 4567\n' }
+    await (behaviour ?? new Promise(() => {}))
     return { value: { code: 0, signal: null } }
   } as never)
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
@@ -122,18 +133,48 @@ test('a failed rewrite says why and never reads the raw text', async ($, on) => 
   expect(seen.says).toEqual([])
 })
 
-test('a voice server that is gone is started again, with the first-run toast while it downloads', async ($, on) => {
+test('the first press starts the voice server, with the first-run toast while it downloads', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = fake(on, { selection: 'Hello.', states: ['down', 'downloading', 'downloading', 'loading', 'idle'] })
+  const seen = fake(on, { selection: 'Hello.', states: ['downloading', 'downloading', 'loading', 'idle'] })
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const pressed = band.press({ key: 'speak' })
   await clock.advance(5000)
   await pressed
 
   expect(seen.spawns.length).toBe(1)
-  expect(seen.spawns[0]?.slice(-2)).toEqual(['--idle', '600'])
+  expect(seen.spawns[0]?.argv.slice(-2)).toEqual(['--idle', '600'])
   expect(seen.toasts).toEqual(['Downloading the voice model (first run, about 340 MB)…'])
   expect(seen.says).toEqual(['spoken: Hello.'])
+})
+
+test('every request goes to the port the server reported, with the secret it was started with', async ($, on) => {
+  mock.clock(on)
+  const seen = fake(on, { selection: 'Hi.' })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'speak' })
+
+  const token = seen.spawns[0]?.env.TALK2ME_TOKEN ?? ''
+  expect(token.length).toBeGreaterThanOrEqual(32)
+  expect(seen.requests.length).toBeGreaterThan(0)
+  for (const request of seen.requests) {
+    expect(request.url.startsWith('http://127.0.0.1:4567/')).toBe(true)
+    expect(request.auth).toBe(`Bearer ${token}`)
+  }
+})
+
+test('a voice server that has exited is started again on the next press', async ($, on) => {
+  const clock = mock.clock(on)
+  let exit = () => {}
+  const running = new Promise<void>(resolve => (exit = resolve))
+  const seen = fake(on, { selection: 'Hi.', child: running })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'speak' })
+  exit()
+  await clock.advance(1000)
+  await band.press({ key: 'speak' })
+
+  expect(seen.spawns.length).toBe(2)
+  expect(seen.says).toEqual(['spoken: Hi.', 'spoken: Hi.'])
 })
 
 test('/speak does what the button does', async ($, on) => {
@@ -193,6 +234,7 @@ test('stopping while the voice starts, then pressing again, starts only one serv
   let end = () => {}
   const running = new Promise<void>(resolve => (end = resolve))
   const seen = fake(on, { selection: 'Hi.', states: ['down', 'down', 'down', 'down', 'down', 'idle'], child: running })
+  // 'down': the server has said its port but does not answer yet.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
 
   const first = band.press({ key: 'speak' })
