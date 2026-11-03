@@ -52,7 +52,7 @@ Restart Claude Code if the key doesn't work straight away.
 ## Use
 
 1. Highlight any part of the conversation with the mouse.
-2. Press `ctrl+x s`. You can also click the **▶ read aloud** button above the prompt, or type `/speak`.
+2. Press `ctrl+x s`. You can also click the **🔊 talk2me** button above the prompt, or type `/speak`.
 3. The button shows **◌ processing…** while the text is rewritten and the voice starts, then **■ speaking…** once you hear it.
 4. Press `ctrl+x s` again (or the button) to stop.
 
@@ -83,7 +83,7 @@ The mod splits the selection into blocks, keeping each table and piece of code w
 | You see | What to do |
 |---|---|
 | "Highlight some text first (talk2me needs fullscreen)" | Turn on fullscreen layout, then highlight text before pressing the key. |
-| The key does nothing | Check `keybindings.json`, restart Claude Code, or use the ▶ read aloud button or `/speak`. The key doesn't work while the diff panel is open. |
+| The key does nothing | Check `keybindings.json`, restart Claude Code, or use the 🔊 talk2me button or `/speak`. The key doesn't work while the diff panel is open. |
 | "the voice stopped: …" | The voice server couldn't start. Check that `uv` and `pw-play` or `paplay` are installed. The message shows the server's last line. |
 | "the voice could not load: …" | The model download failed. Press again to retry: the server restarts by itself after a failure. |
 

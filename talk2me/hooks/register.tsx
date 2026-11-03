@@ -129,7 +129,7 @@ export const register: Register = (on, options) => {
           key="speak"
           plain
           action={KEY_ACTION}
-          label={now === 'speaking' ? '■ speaking…' : now === 'processing' ? '◌ processing…' : '▶ read aloud'}
+          label={now === 'speaking' ? '■ speaking…' : now === 'processing' ? '◌ processing…' : '\u{1F50A} talk2me'}
           onPress={() => void toggleSpeak($, options)}
         />
       </Box>

@@ -249,7 +249,7 @@ test('the button says processing until audio plays, then speaking', async ($, on
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const label = async () => (await band.find({ key: 'speak' }))?.text
 
-  expect(await label()).toBe('▶ read aloud')
+  expect(await label()).toBe('\u{1F50A} talk2me')
   const pressed = band.press({ key: 'speak' })
   await isRewriting
   expect(await label()).toBe('◌ processing…')
@@ -261,6 +261,6 @@ test('the button says processing until audio plays, then speaking', async ($, on
 
   await clock.advance(3000)
   await pressed
-  expect(await label()).toBe('▶ read aloud')
+  expect(await label()).toBe('\u{1F50A} talk2me')
   expect(seen.says).toEqual(['Hi.'])
 })
