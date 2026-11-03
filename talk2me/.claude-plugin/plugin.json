@@ -2,6 +2,10 @@
   "name": "talk2me",
   "version": "0.2.0",
   "description": "Highlight part of the conversation and press ctrl+x s to hear it read aloud",
+  "author": {
+    "name": "Karol Podkanski",
+    "url": "https://github.com/podkanski-dev"
+  },
   "types": "./types/index.d.ts",
   "userConfig": {
     "voice": {
@@ -9,7 +13,17 @@
       "title": "Voice",
       "description": "Kokoro voice that reads the selection aloud",
       "default": "af_heart",
-      "options": ["af_heart", "af_bella", "af_nicole", "af_sarah", "am_michael", "am_adam", "am_fenrir", "bf_emma", "bm_george"]
+      "options": [
+        "af_heart",
+        "af_bella",
+        "af_nicole",
+        "af_sarah",
+        "am_michael",
+        "am_adam",
+        "am_fenrir",
+        "bf_emma",
+        "bm_george"
+      ]
     },
     "speed": {
       "type": "number",

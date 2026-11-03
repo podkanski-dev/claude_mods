@@ -2,5 +2,9 @@
   "name": "assumption-tracker",
   "version": "0.1.2",
   "description": "After each task, lists the assumptions Claude made; mark them Right or Wrong and Claude fixes only the wrong ones.",
+  "author": {
+    "name": "Karol Podkanski",
+    "url": "https://github.com/podkanski-dev"
+  },
   "types": "./types/index.d.ts"
 }
