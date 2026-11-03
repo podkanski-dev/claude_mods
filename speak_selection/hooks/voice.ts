@@ -10,7 +10,7 @@ export async function socketPath($: EngineInterface): Promise<string> {
   return `${dir}/speak-selection-${id}.sock`
 }
 
-type Status = { state: 'downloading' | 'loading' | 'idle' | 'speaking' | 'failed'; error?: string | null }
+type Status = { state: 'downloading' | 'loading' | 'idle' | 'speaking' | 'failed'; isPlaying?: boolean; error?: string | null }
 
 async function status($: EngineInterface, socket: string): Promise<Status | null> {
   try {
@@ -84,6 +84,12 @@ export async function stopVoice($: EngineInterface, socket: string): Promise<voi
   await $.http.fetch('http://voice/stop', { method: 'POST', socketPath: socket }).catch(() => undefined)
 }
 
-export async function isPlaying($: EngineInterface, socket: string): Promise<boolean> {
+// Busy: sentences are still queued, being made or playing.
+export async function isBusy($: EngineInterface, socket: string): Promise<boolean> {
   return (await status($, socket))?.state === 'speaking'
+}
+
+// Audible: a sentence is playing right now.
+export async function isAudible($: EngineInterface, socket: string): Promise<boolean> {
+  return (await status($, socket))?.isPlaying === true
 }

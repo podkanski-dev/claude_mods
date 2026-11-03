@@ -6,14 +6,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import type { IsSpeaking } from '../types'
+import type { Phase } from '../types'
 import { splitBlocks } from './blocks'
 import { rewriteBlock } from './rewrite'
-import { ensureVoice, isPlaying, say, socketPath, stopVoice } from './voice'
+import { ensureVoice, isAudible, isBusy, say, socketPath, stopVoice } from './voice'
 
 export const KEY_ACTION = 'app:toggleDiffNoiseFilter'
 
-const isSpeaking = atom({ plugin: 'speak-selection', key: 'isSpeaking' } as const, false as IsSpeaking)
+const phase = atom({ plugin: 'speak-selection', key: 'phase' } as const, 'idle' as Phase)
 
 // Each press starts a new run; a run whose number is no longer current has
 // been stopped and must not post anything more to the voice. `active` is
@@ -28,7 +28,7 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
     active = 0
     stopRun.abort()
     await stopVoice($, await socketPath($))
-    await update($, isSpeaking, () => false)
+    await update($, phase, () => 'idle')
     return
   }
   const mine = ++run
@@ -38,8 +38,9 @@ export async function toggleSpeak($: EngineInterface, options: PluginOptions): P
   const isCurrent = () => mine === run
   const finish = async () => {
     if (!isCurrent()) return
+    stopRun.abort() // ends this run's audio watcher
     active = 0
-    await update($, isSpeaking, () => false)
+    await update($, phase, () => 'idle')
   }
 
   try {
@@ -58,7 +59,7 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
     $.ui.toast('Highlight some text first (speak-selection needs fullscreen)')
     return
   }
-  await update($, isSpeaking, () => true)
+  await update($, phase, () => 'processing')
 
   try {
     await ensureVoice($, socket, signal)
@@ -70,6 +71,7 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
 
   const voice = String(options.voice ?? 'af_heart')
   const speed = Number(options.speed ?? 1)
+  let isWatching = false
   for (const [i, block] of blocks.entries()) {
     const r = await rewriteBlock($, block, i === 0)
     if (!isCurrent()) return
@@ -78,11 +80,28 @@ async function speak($: EngineInterface, options: PluginOptions, mine: number, s
       await stopVoice($, socket)
       return
     }
-    if (r.text.trim()) await say($, socket, r.text, voice, speed)
+    if (!r.text.trim()) continue
+    await say($, socket, r.text, voice, speed)
+    if (!isWatching) {
+      isWatching = true
+      void watchForAudio($, socket, isCurrent, signal).catch(() => undefined)
+    }
   }
 
-  while (isCurrent() && (await isPlaying($, socket))) {
+  while (isCurrent() && (await isBusy($, socket))) {
     await $.clock.sleep(500, { signal }).catch(() => undefined)
+  }
+}
+
+// Flips the label from processing to speaking once sound actually comes out,
+// while later blocks may still be rewriting.
+async function watchForAudio($: EngineInterface, socket: string, isCurrent: () => boolean, signal: AbortSignal) {
+  while (isCurrent() && !signal.aborted && (await read($, phase)) === 'processing') {
+    if (await isAudible($, socket)) {
+      if (isCurrent()) await update($, phase, () => 'speaking')
+      return
+    }
+    await $.clock.sleep(300, { signal }).catch(() => undefined)
   }
 }
 
@@ -103,14 +122,14 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
 
     const { Box, Button } = $.ui.resolve(e)
-    const speaking = await read($, isSpeaking)
+    const now = await read($, phase)
     return (
       <Box>
         <Button
           key="speak"
           plain
           action={KEY_ACTION}
-          label={speaking ? '■ speaking…' : '\u{1F50A}'}
+          label={now === 'speaking' ? '■ speaking…' : now === 'processing' ? '◌ processing…' : '\u{1F50A}'}
           onPress={() => void toggleSpeak($, options)}
         />
       </Box>

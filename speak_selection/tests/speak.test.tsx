@@ -31,7 +31,9 @@ function fake(on: On, { selection, replies, states = [], child }: Fake) {
     if (e.url.endsWith('/status')) {
       const state = states.shift() ?? 'idle'
       if (state === 'down') throw new Error('ECONNREFUSED')
-      return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ state }) } }
+      // 'playing': the server is speaking and audio is coming out now.
+      const body = state === 'playing' ? { state: 'speaking', isPlaying: true } : { state, isPlaying: false }
+      return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } }
     }
     if (e.url.endsWith('/say')) seen.says.push(JSON.parse(e.init?.body ?? '{}').text)
     if (e.url.endsWith('/stop')) seen.stops += 1
@@ -228,4 +230,37 @@ test('a block the model has no words for is skipped, the rest is read', async ($
 
   expect(seen.toasts).toEqual([])
   expect(seen.says).toEqual(['One.', 'Two.'])
+})
+
+test('the button says processing until audio plays, then speaking', async ($, on) => {
+  const clock = mock.clock(on)
+  let release = () => {}
+  let rewriting = () => {}
+  const isRewriting = new Promise<void>(resolve => (rewriting = resolve))
+  const states = ['idle']
+  const seen = fake(on, {
+    selection: 'Hi.',
+    states,
+    replies: block => {
+      rewriting()
+      return new Promise(resolve => (release = () => resolve({ text: block })))
+    },
+  })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const label = async () => (await band.find({ key: 'speak' }))?.text
+
+  expect(await label()).toBe('\u{1F50A}')
+  const pressed = band.press({ key: 'speak' })
+  await isRewriting
+  expect(await label()).toBe('◌ processing…')
+
+  states.push('speaking', 'playing', 'playing', 'idle')
+  release()
+  for (let i = 0; i < 20 && (await label()) !== '■ speaking…'; i++) await clock.advance(300)
+  expect(await label()).toBe('■ speaking…')
+
+  await clock.advance(3000)
+  await pressed
+  expect(await label()).toBe('\u{1F50A}')
+  expect(seen.says).toEqual(['Hi.'])
 })

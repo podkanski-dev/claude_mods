@@ -1,7 +1,8 @@
 """Kokoro voice server for speak-selection, one per Claude Code session.
 
 HTTP over a Unix socket:
-  GET  /status -> {"state": "downloading" | "loading" | "idle" | "speaking" | "failed", "error"?}
+  GET  /status -> {"state": "downloading" | "loading" | "idle" | "speaking" | "failed",
+                   "isPlaying": bool (audio coming out right now), "error"?}
   POST /say    {"text", "voice", "speed"} -> 202, queued and spoken sentence by sentence
   POST /stop   -> 200, clears the queue and silences playback at once
 Exits after --idle seconds without a request while idle.
@@ -148,7 +149,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.touch()
         if self.path == "/status":
-            self.reply(200, {"state": state(), "error": load_error})
+            self.reply(200, {"state": state(), "isPlaying": player is not None, "error": load_error})
         else:
             self.reply(404, {"error": "not found"})
 
