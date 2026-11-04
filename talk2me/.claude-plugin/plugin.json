@@ -1,6 +1,6 @@
 {
   "name": "talk2me",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Highlight part of the conversation and press ctrl+x s to hear it read aloud",
   "author": {
     "name": "Karol Podkanski",

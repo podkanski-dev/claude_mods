@@ -329,3 +329,24 @@ test('the button says processing until audio plays, then speaking', async ($, on
   expect(await label()).toBe('\u{1F50A} talk2me')
   expect(seen.says).toEqual(['Hi.'])
 })
+
+test("another mod's band beneath keeps its place beside the button, and both press", async ($, on) => {
+  mock.clock(on)
+  let reviewed = 0
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box>
+        <Button key="review" label="Review" onPress={() => void (reviewed += 1)} />
+      </Box>
+    )
+  })
+  const seen = fake(on, { selection: 'Hello.' })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  await band.press({ key: 'review', plugin: 'test' })
+  await band.press({ key: 'speak' })
+
+  expect(reviewed).toBe(1)
+  expect(seen.says).toEqual(['spoken: Hello.'])
+})

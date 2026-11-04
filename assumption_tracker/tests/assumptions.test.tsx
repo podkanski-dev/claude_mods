@@ -60,3 +60,33 @@ test('review assumptions and send a fix for the wrong ones', async ($, on) => {
   expect(sent[1]).toMatch(/WRONG[^]*Kept the old API/)
   expect(sent[1]?.split('RIGHT')[0]).not.toMatch(/Named the table users/)
 })
+
+test("another mod's band beneath stays drawn under the assumptions, and both press", async ($, on) => {
+  const clock = mock.clock(on)
+  let spoken = 0
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box>
+        <Button key="speak" label="talk2me" onPress={() => void (spoken += 1)} />
+      </Box>
+    )
+  })
+  on('model.fork', () => ({ value: { isAnswered: true as const, text: '["Used SQLite"]', usage } }))
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>engine</Text>
+  })
+
+  await $.turn.complete({ answer: 'Done.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.settle()
+
+  const band = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+  expect(await band.find({ type: 'Text', text: 'Claude made 1 assumption' })).toBeDefined()
+  await band.press({ key: 'speak', plugin: 'test' })
+  await band.press({ key: 'review' })
+
+  expect(spoken).toBe(1)
+})

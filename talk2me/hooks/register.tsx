@@ -133,10 +133,13 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
+    // The band draws one tree, so another mod's band beneath (say
+    // assumption-tracker's) is drawn under the button instead of hiding it.
+    const below = await next(e)
     const { Box, Button } = $.ui.resolve(e)
     const now = await read($, phase)
     return (
-      <Box>
+      <Box flexDirection="column">
         <Button
           key="speak"
           plain
@@ -144,6 +147,7 @@ export const register: Register = (on, options) => {
           label={now === 'speaking' ? '■ speaking…' : now === 'processing' ? '◌ processing…' : '\u{1F50A} talk2me'}
           onPress={() => void toggleSpeak($, options)}
         />
+        {below.type === 'engine' ? null : below}
       </Box>
     )
   })

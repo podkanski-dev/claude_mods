@@ -82,18 +82,24 @@ export const register: Register = on => {
     const list = await read($, items)
     if (list.length === 0 || e.props.hasSurvey) return next(e)
 
+    // The band draws one tree, so another mod's band beneath (say talk2me's
+    // button) is drawn under this row instead of being hidden by it.
+    const below = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const done = list.filter(a => a.verdict !== null).length
     return (
-      <Box>
-        <Text color="warning">
-          Claude made {list.length} assumption{list.length === 1 ? '' : 's'}
-        </Text>
-        <Text dimColor>
-          {done > 0 ? ` (${done} reviewed)` : ''}{' '}
-        </Text>
-        {/* a bare digit in an empty prompt box presses a band Button's hotkey */}
-        <Button key="review" hotkey="0" label="Review" onPress={() => void openPane($)} />
+      <Box flexDirection="column">
+        <Box>
+          <Text color="warning">
+            Claude made {list.length} assumption{list.length === 1 ? '' : 's'}
+          </Text>
+          <Text dimColor>
+            {done > 0 ? ` (${done} reviewed)` : ''}{' '}
+          </Text>
+          {/* a bare digit in an empty prompt box presses a band Button's hotkey */}
+          <Button key="review" hotkey="0" label="Review" onPress={() => void openPane($)} />
+        </Box>
+        {below.type === 'engine' ? null : below}
       </Box>
     )
   })
